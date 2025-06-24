@@ -63,6 +63,7 @@ typedef struct
    char                   umpire_um_pool_name[HYPRE_UMPIRE_POOL_NAME_MAX_LEN];
    char                   umpire_host_pool_name[HYPRE_UMPIRE_POOL_NAME_MAX_LEN];
    char                   umpire_pinned_pool_name[HYPRE_UMPIRE_POOL_NAME_MAX_LEN];
+   char                   umpire_mpi_pool_name[HYPRE_UMPIRE_POOL_NAME_MAX_LEN];
    size_t                 umpire_device_pool_size;
    size_t                 umpire_um_pool_size;
    size_t                 umpire_host_pool_size;
@@ -138,6 +139,7 @@ typedef struct
 #define hypre_HandleUmpireUMPoolName(hypre_handle)               ((hypre_handle) -> umpire_um_pool_name)
 #define hypre_HandleUmpireHostPoolName(hypre_handle)             ((hypre_handle) -> umpire_host_pool_name)
 #define hypre_HandleUmpirePinnedPoolName(hypre_handle)           ((hypre_handle) -> umpire_pinned_pool_name)
+#define hypre_HandleUmpireMPIPoolName(hypre_handle)           ((hypre_handle) -> umpire_mpi_pool_name)
 #define hypre_HandleOwnUmpireDevicePool(hypre_handle)            ((hypre_handle) -> own_umpire_device_pool)
 #define hypre_HandleOwnUmpireUMPool(hypre_handle)                ((hypre_handle) -> own_umpire_um_pool)
 #define hypre_HandleOwnUmpireHostPool(hypre_handle)              ((hypre_handle) -> own_umpire_host_pool)

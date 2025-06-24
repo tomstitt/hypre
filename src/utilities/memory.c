@@ -436,6 +436,20 @@ hypre_MAlloc_core(size_t size, HYPRE_Int zeroinit, hypre_MemoryLocation location
       case hypre_MEMORY_HOST_PINNED :
          ptr = hypre_HostPinnedMalloc(size, zeroinit);
          break;
+      case hypre_MEMORY_MPI :
+         hypre_umpire_mpi_pooled_allocate(&ptr, size);
+         if (ptr && zeroinit)
+         {
+            if (hypre_GetGpuAwareMPI())
+            {
+               hypre_DeviceMemset(ptr, 0, size);
+            }
+            else
+            {
+               hypre_HostMemset(ptr, 0, size);
+            }
+         }
+         break;
       default :
          hypre_WrongMemoryLocation();
    }
@@ -586,6 +600,9 @@ hypre_Free_core(void *ptr, hypre_MemoryLocation location)
       case hypre_MEMORY_HOST_PINNED :
          hypre_HostPinnedFree(ptr);
          break;
+      case hypre_MEMORY_MPI :
+         hypre_umpire_mpi_pooled_free(ptr);
+         break;
       default :
          hypre_WrongMemoryLocation();
    }
@@ -663,10 +680,7 @@ hypre_Memcpy_core(void *dst, void *src, size_t size, hypre_MemoryLocation loc_ds
 #endif
 
 #if defined(HYPRE_USING_HIP)
-      // hipMemcpy(DtoD) causes a host-side synchronization, unlike cudaMemcpy(DtoD),
-      // use hipMemcpyAsync to get cuda's more performant behavior. For more info see:
-      // https://github.com/mfem/mfem/pull/2780
-      HYPRE_HIP_CALL( hipMemcpyAsync(dst, src, size, hipMemcpyDeviceToDevice) );
+      HYPRE_HIP_CALL( hipMemcpy(dst, src, size, hipMemcpyDeviceToDevice) );
 #endif
 
 #if defined(HYPRE_USING_SYCL)
@@ -794,10 +808,7 @@ hypre_Memcpy_core(void *dst, void *src, size_t size, hypre_MemoryLocation loc_ds
 #endif
 
 #if defined(HYPRE_USING_HIP)
-      // hipMemcpy(DtoD) causes a host-side synchronization, unlike cudaMemcpy(DtoD),
-      // use hipMemcpyAsync to get cuda's more performant behavior. For more info see:
-      // https://github.com/mfem/mfem/pull/2780
-      HYPRE_HIP_CALL( hipMemcpyAsync(dst, src, size, hipMemcpyDeviceToDevice) );
+      HYPRE_HIP_CALL( hipMemcpy(dst, src, size, hipMemcpyDeviceToDevice) );
 #endif
 
 #if defined(HYPRE_USING_SYCL)
@@ -2054,6 +2065,57 @@ hypre_umpire_pinned_pooled_free(void *ptr)
 }
 #endif
 
+/*--------------------------------------------------------------------------
+ * hypre_umpire_mpi_pooled_allocate
+ *--------------------------------------------------------------------------*/
+
+#if defined(HYPRE_USING_UMPIRE_DEVICE)
+HYPRE_Int
+hypre_umpire_mpi_pooled_allocate(void **ptr, size_t nbytes)
+{
+   hypre_Handle *handle = hypre_handle();
+   const char *pool_name = hypre_HandleUmpireMPIPoolName(handle);
+
+   umpire_resourcemanager *rm_ptr = &hypre_HandleUmpireResourceMan(handle);
+   umpire_allocator pooled_allocator;
+
+   if ( umpire_resourcemanager_is_allocator_name(rm_ptr, pool_name) )
+   {
+      umpire_resourcemanager_get_allocator_by_name(rm_ptr, pool_name, &pooled_allocator);
+   }
+   else
+   {
+      fprintf(stderr, "mpi pool must be preset\n");
+      exit(1);
+   }
+
+   *ptr = umpire_allocator_allocate(&pooled_allocator, nbytes);
+
+   return hypre_error_flag;
+}
+
+/*--------------------------------------------------------------------------
+ * hypre_umpire_mpi_pooled_free
+ *--------------------------------------------------------------------------*/
+
+HYPRE_Int
+hypre_umpire_mpi_pooled_free(void *ptr)
+{
+   hypre_Handle *handle = hypre_handle();
+   const char *pool_name = hypre_HandleUmpireMPIPoolName(handle);
+   umpire_allocator pooled_allocator;
+
+   umpire_resourcemanager *rm_ptr = &hypre_HandleUmpireResourceMan(handle);
+
+   hypre_assert(umpire_resourcemanager_is_allocator_name(rm_ptr, pool_name));
+
+   umpire_resourcemanager_get_allocator_by_name(rm_ptr, pool_name, &pooled_allocator);
+   umpire_allocator_deallocate(&pooled_allocator, ptr);
+
+   return hypre_error_flag;
+}
+#endif
+
 /******************************************************************************
  *
  * hypre Umpire
@@ -2326,6 +2388,21 @@ HYPRE_SetUmpirePinnedPoolName(const char *pool_name)
    }
 
    strcpy(hypre_HandleUmpirePinnedPoolName(hypre_handle()), pool_name);
+
+   return hypre_error_flag;
+}
+
+
+HYPRE_Int
+HYPRE_SetUmpireMPIPoolName(const char *pool_name)
+{
+   if (strlen(pool_name) > HYPRE_UMPIRE_POOL_NAME_MAX_LEN)
+   {
+      hypre_error_in_arg(1);
+      return hypre_error_flag;
+   }
+
+   strcpy(hypre_HandleUmpireMPIPoolName(hypre_handle()), pool_name);
 
    return hypre_error_flag;
 }

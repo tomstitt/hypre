@@ -439,6 +439,8 @@ HYPRE_Int HYPRE_SetUmpireHostPoolName(const char *pool_name);
  **/
 HYPRE_Int HYPRE_SetUmpirePinnedPoolName(const char *pool_name);
 
+HYPRE_Int HYPRE_SetUmpireMPIPoolName(const char *pool_name);
+
 /*--------------------------------------------------------------------------
  * HYPRE GPU memory pool
  *--------------------------------------------------------------------------*/

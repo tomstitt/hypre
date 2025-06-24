@@ -33,7 +33,13 @@ extern "C" {
 #if defined(HYPRE_USING_UMPIRE)
 #include "umpire/config.hpp"
 #if UMPIRE_VERSION_MAJOR >= 2022
+#ifdef __cplusplus
+extern "C++" {
+#endif
 #include "umpire/interface/c_fortran/umpire.h"
+#ifdef __cplusplus
+}
+#endif
 #define hypre_umpire_resourcemanager_make_allocator_pool umpire_resourcemanager_make_allocator_quick_pool
 #else
 #include "umpire/interface/umpire.h"
@@ -79,6 +85,7 @@ typedef struct
    char                   umpire_um_pool_name[HYPRE_UMPIRE_POOL_NAME_MAX_LEN];
    char                   umpire_host_pool_name[HYPRE_UMPIRE_POOL_NAME_MAX_LEN];
    char                   umpire_pinned_pool_name[HYPRE_UMPIRE_POOL_NAME_MAX_LEN];
+   char                   umpire_mpi_pool_name[HYPRE_UMPIRE_POOL_NAME_MAX_LEN];
    size_t                 umpire_device_pool_size;
    size_t                 umpire_um_pool_size;
    size_t                 umpire_host_pool_size;
@@ -154,6 +161,7 @@ typedef struct
 #define hypre_HandleUmpireUMPoolName(hypre_handle)               ((hypre_handle) -> umpire_um_pool_name)
 #define hypre_HandleUmpireHostPoolName(hypre_handle)             ((hypre_handle) -> umpire_host_pool_name)
 #define hypre_HandleUmpirePinnedPoolName(hypre_handle)           ((hypre_handle) -> umpire_pinned_pool_name)
+#define hypre_HandleUmpireMPIPoolName(hypre_handle)           ((hypre_handle) -> umpire_mpi_pool_name)
 #define hypre_HandleOwnUmpireDevicePool(hypre_handle)            ((hypre_handle) -> own_umpire_device_pool)
 #define hypre_HandleOwnUmpireUMPool(hypre_handle)                ((hypre_handle) -> own_umpire_um_pool)
 #define hypre_HandleOwnUmpireHostPool(hypre_handle)              ((hypre_handle) -> own_umpire_host_pool)
@@ -1179,6 +1187,7 @@ typedef enum _hypre_MemoryLocation
    hypre_MEMORY_HOST_PINNED,
    hypre_MEMORY_DEVICE,
    hypre_MEMORY_UNIFIED,
+   hypre_MEMORY_MPI,
    hypre_NUM_MEMORY_LOCATION
 } hypre_MemoryLocation;
 
@@ -1205,6 +1214,11 @@ hypre_GetActualMemLocation(HYPRE_MemoryLocation location)
 #else
 #error Wrong HYPRE memory setting.
 #endif
+   }
+
+   if (location == hypre_MEMORY_MPI)
+   {
+      return hypre_MEMORY_MPI;
    }
 
    return hypre_MEMORY_UNDEFINED;
@@ -1277,6 +1291,8 @@ HYPRE_Int hypre_umpire_um_pooled_allocate(void **ptr, size_t nbytes);
 HYPRE_Int hypre_umpire_um_pooled_free(void *ptr);
 HYPRE_Int hypre_umpire_pinned_pooled_allocate(void **ptr, size_t nbytes);
 HYPRE_Int hypre_umpire_pinned_pooled_free(void *ptr);
+HYPRE_Int hypre_umpire_mpi_pooled_allocate(void **ptr, size_t nbytes);
+HYPRE_Int hypre_umpire_mpi_pooled_free(void *ptr);
 HYPRE_Int hypre_UmpireInit(hypre_Handle *hypre_handle_);
 HYPRE_Int hypre_UmpireFinalize(hypre_Handle *hypre_handle_);
 HYPRE_Int hypre_UmpireGetCurrentMemoryUsage(MPI_Comm comm, HYPRE_Real *current);

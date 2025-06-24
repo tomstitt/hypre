@@ -94,6 +94,7 @@ typedef enum _hypre_MemoryLocation
    hypre_MEMORY_HOST_PINNED,
    hypre_MEMORY_DEVICE,
    hypre_MEMORY_UNIFIED,
+   hypre_MEMORY_MPI,
    hypre_NUM_MEMORY_LOCATION
 } hypre_MemoryLocation;
 
@@ -120,6 +121,11 @@ hypre_GetActualMemLocation(HYPRE_MemoryLocation location)
 #else
 #error Wrong HYPRE memory setting.
 #endif
+   }
+
+   if (location == hypre_MEMORY_MPI)
+   {
+      return hypre_MEMORY_MPI;
    }
 
    return hypre_MEMORY_UNDEFINED;
@@ -192,6 +198,8 @@ HYPRE_Int hypre_umpire_um_pooled_allocate(void **ptr, size_t nbytes);
 HYPRE_Int hypre_umpire_um_pooled_free(void *ptr);
 HYPRE_Int hypre_umpire_pinned_pooled_allocate(void **ptr, size_t nbytes);
 HYPRE_Int hypre_umpire_pinned_pooled_free(void *ptr);
+HYPRE_Int hypre_umpire_mpi_pooled_allocate(void **ptr, size_t nbytes);
+HYPRE_Int hypre_umpire_mpi_pooled_free(void *ptr);
 HYPRE_Int hypre_UmpireInit(hypre_Handle *hypre_handle_);
 HYPRE_Int hypre_UmpireFinalize(hypre_Handle *hypre_handle_);
 HYPRE_Int hypre_UmpireGetCurrentMemoryUsage(MPI_Comm comm, HYPRE_Real *current);

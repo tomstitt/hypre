@@ -353,6 +353,7 @@ hypre_ParCSRCommHandleCreate ( HYPRE_Int            job,
 /*------------------------------------------------------------------
  * hypre_ParCSRCommHandleCreate_v2
  *------------------------------------------------------------------*/
+static int mpi_pool_verbose = 0;
 
 hypre_ParCSRCommHandle*
 hypre_ParCSRCommHandleCreate_v2 ( HYPRE_Int            job,
@@ -409,6 +410,7 @@ hypre_ParCSRCommHandleCreate_v2 ( HYPRE_Int            job,
     *           addresses, e.g. generated using hypre_MPI_Address .
     *--------------------------------------------------------------------*/
 
+#if 0
    if (!hypre_GetGpuAwareMPI())
    {
       switch (job)
@@ -474,6 +476,83 @@ hypre_ParCSRCommHandleCreate_v2 ( HYPRE_Int            job,
       send_data = send_data_in;
       recv_data = recv_data_in;
    }
+#else
+   static int once = 1;
+   if (once == 1)
+   {
+      fprintf(stderr, "hypre: using the mpi pool for device buffer comms\n");
+      const char * env = "HYPRE_VERBOSE_MPI_POOL";
+      const char * val = getenv(env);
+      if (val != NULL)
+      {
+         if (val[0] == '1')
+         {
+            mpi_pool_verbose = 1;
+         }
+      }
+      once = 0;
+   }
+
+   switch (job)
+   {
+      case 1:
+         num_send_bytes = hypre_ParCSRCommPkgSendMapStart(comm_pkg, num_sends) * sizeof(HYPRE_Complex);
+         num_recv_bytes = hypre_ParCSRCommPkgRecvVecStart(comm_pkg, num_recvs) * sizeof(HYPRE_Complex);
+         break;
+      case 2:
+         num_send_bytes = hypre_ParCSRCommPkgRecvVecStart(comm_pkg, num_recvs) * sizeof(HYPRE_Complex);
+         num_recv_bytes = hypre_ParCSRCommPkgSendMapStart(comm_pkg, num_sends) * sizeof(HYPRE_Complex);
+         break;
+      case 11:
+         num_send_bytes = hypre_ParCSRCommPkgSendMapStart(comm_pkg, num_sends) * sizeof(HYPRE_Int);
+         num_recv_bytes = hypre_ParCSRCommPkgRecvVecStart(comm_pkg, num_recvs) * sizeof(HYPRE_Int);
+         break;
+      case 12:
+         num_send_bytes = hypre_ParCSRCommPkgRecvVecStart(comm_pkg, num_recvs) * sizeof(HYPRE_Int);
+         num_recv_bytes = hypre_ParCSRCommPkgSendMapStart(comm_pkg, num_sends) * sizeof(HYPRE_Int);
+         break;
+      case 21:
+         num_send_bytes = hypre_ParCSRCommPkgSendMapStart(comm_pkg, num_sends) * sizeof(HYPRE_BigInt);
+         num_recv_bytes = hypre_ParCSRCommPkgRecvVecStart(comm_pkg, num_recvs) * sizeof(HYPRE_BigInt);
+         break;
+      case 22:
+         num_send_bytes = hypre_ParCSRCommPkgRecvVecStart(comm_pkg, num_recvs) * sizeof(HYPRE_BigInt);
+         num_recv_bytes = hypre_ParCSRCommPkgSendMapStart(comm_pkg, num_sends) * sizeof(HYPRE_BigInt);
+         break;
+   }
+
+   hypre_MemoryLocation act_send_memory_location = hypre_GetActualMemLocation(send_memory_location);
+   if ( act_send_memory_location == hypre_MEMORY_DEVICE ||
+        act_send_memory_location == hypre_MEMORY_UNIFIED )
+   {
+      if (mpi_pool_verbose) fprintf(stderr, "mpi pool debug: copying a device buffer with length %d into the mpi pool and sending\n", num_send_bytes);
+      send_data = hypre_TAlloc(char, num_send_bytes, hypre_MEMORY_MPI);
+      hypre_TMemcpy(send_data, send_data_in, char, num_send_bytes,
+            hypre_GetGpuAwareMPI() ? HYPRE_MEMORY_DEVICE : HYPRE_MEMORY_HOST,
+            HYPRE_MEMORY_DEVICE);
+      if (hypre_GetGpuAwareMPI())
+      {
+         hypre_ForceSyncComputeStream();
+      }
+   }
+   else
+   {
+      if (mpi_pool_verbose) fprintf(stderr, "mpi pool debug: sending host buffer with length %d without the the pool\n", num_send_bytes);
+      send_data = send_data_in;
+   }
+
+   hypre_MemoryLocation act_recv_memory_location = hypre_GetActualMemLocation(recv_memory_location);
+   if ( act_recv_memory_location == hypre_MEMORY_DEVICE ||
+        act_recv_memory_location == hypre_MEMORY_UNIFIED )
+   {
+      recv_data = hypre_TAlloc(char, num_recv_bytes, hypre_MEMORY_MPI);
+   }
+   else
+   {
+      recv_data = recv_data_in;
+   }
+#endif
+
 
    num_requests = num_sends + num_recvs;
    requests = hypre_CTAlloc(hypre_MPI_Request, num_requests, HYPRE_MEMORY_HOST);
@@ -666,6 +745,7 @@ hypre_ParCSRCommHandleDestroy( hypre_ParCSRCommHandle *comm_handle )
       hypre_TFree(status0, HYPRE_MEMORY_HOST);
    }
 
+#if 0
    if (!hypre_GetGpuAwareMPI())
    {
       hypre_MemoryLocation act_send_memory_location =
@@ -696,6 +776,40 @@ hypre_ParCSRCommHandleDestroy( hypre_ParCSRCommHandle *comm_handle )
          hypre_TFree(hypre_ParCSRCommHandleRecvDataBuffer(comm_handle), HYPRE_MEMORY_HOST);
       }
    }
+#else
+
+   HYPRE_Int num_recv_bytes = hypre_ParCSRCommHandleNumRecvBytes(comm_handle);
+   // we only allocated a send buffer if the buffer being sent was a gpu buffer
+   hypre_MemoryLocation act_send_memory_location = hypre_GetActualMemLocation(hypre_ParCSRCommHandleSendMemoryLocation(comm_handle));
+   if ( act_send_memory_location == hypre_MEMORY_DEVICE ||
+        act_send_memory_location == hypre_MEMORY_UNIFIED )
+   {
+      hypre_TFree(hypre_ParCSRCommHandleSendDataBuffer(comm_handle), hypre_MEMORY_MPI);
+   }
+
+   hypre_MemoryLocation act_recv_memory_location = hypre_GetActualMemLocation(hypre_ParCSRCommHandleRecvMemoryLocation(comm_handle));
+   if ( act_recv_memory_location == hypre_MEMORY_DEVICE ||
+        act_recv_memory_location == hypre_MEMORY_UNIFIED )
+   {
+      if (mpi_pool_verbose) fprintf(stderr, "mpi pool debug: recving a mpi pool buffer with length %d and copying into device memory\n", num_recv_bytes);
+      hypre_TMemcpy( hypre_ParCSRCommHandleRecvData(comm_handle),
+                     hypre_ParCSRCommHandleRecvDataBuffer(comm_handle),
+                     char,
+                     hypre_ParCSRCommHandleNumRecvBytes(comm_handle),
+                     HYPRE_MEMORY_DEVICE,
+                     // The MPI Pool's memory type depends on if we are using GPU-Aware MPI or not
+                     hypre_GetGpuAwareMPI() ? HYPRE_MEMORY_DEVICE : HYPRE_MEMORY_HOST );
+      if (hypre_GetGpuAwareMPI())
+      {
+         hypre_ForceSyncComputeStream();
+      }
+      hypre_TFree(hypre_ParCSRCommHandleRecvDataBuffer(comm_handle), hypre_MEMORY_MPI);
+   }
+   else
+   {
+      if (mpi_pool_verbose) fprintf(stderr, "mpi pool debug: recving a host buffer with length %d and doing nothing\n", num_recv_bytes);
+   }
+#endif
 
    hypre_TFree(hypre_ParCSRCommHandleRequests(comm_handle), HYPRE_MEMORY_HOST);
    hypre_TFree(comm_handle, HYPRE_MEMORY_HOST);
